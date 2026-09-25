@@ -437,7 +437,7 @@ def poll_ig_container(container_id: str) -> str:
             params={"fields": "status_code,status", "access_token": TOKEN},
         )
         status = data.get("status_code") or "UNKNOWN"
-        if status in {"FINISHED", "ERROR", "EXPIRED"}:
+        if status in {"FINISHED", "PUBLISHED", "ERROR", "EXPIRED"}:
             return status
         time.sleep(4)
     return "TIMEOUT"
@@ -447,6 +447,25 @@ def ensure_ig(row: dict, rows: list[dict]) -> bool:
     if row.get("published_ig_id"):
         return False
     if row.get("ig_publish_ambiguous"):
+        creation_id = row.get("ig_creation_id")
+        if creation_id:
+            status = poll_ig_container(creation_id)
+            if status == "PUBLISHED":
+                row.pop("ig_publish_ambiguous", None)
+                row.pop("ig_publish_ambiguous_at", None)
+                row["ig_reconciled_status"] = "PUBLISHED"
+                row["scheduler_blocked"] = True
+                row["scheduler_block_reason"] = (
+                    "Instagram container is already PUBLISHED but final media ID "
+                    "could not be recovered; skipped to prevent a duplicate."
+                )
+                row["batch_status"] = "ig_published_reconciled"
+                checkpoint(rows)
+                log(
+                    f"reconciled {row.get('queue_id')} as PUBLISHED container; "
+                    "blocked duplicate retry"
+                )
+                return False
         raise AmbiguousPublish(
             f"{row.get('queue_id')} Instagram publish is ambiguous; refusing blind retry"
         )
@@ -481,6 +500,20 @@ def ensure_ig(row: dict, rows: list[dict]) -> bool:
         row["batch_status"] = "ig_processing"
         checkpoint(rows)
     status = poll_ig_container(row["ig_creation_id"])
+    if status == "PUBLISHED":
+        row["ig_reconciled_status"] = "PUBLISHED"
+        row["scheduler_blocked"] = True
+        row["scheduler_block_reason"] = (
+            "Instagram container is already PUBLISHED but final media ID "
+            "could not be recovered; skipped to prevent a duplicate."
+        )
+        row["batch_status"] = "ig_published_reconciled"
+        checkpoint(rows)
+        log(
+            f"reconciled {row.get('queue_id')} as PUBLISHED container; "
+            "blocked duplicate retry"
+        )
+        return False
     if status != "FINISHED":
         row["ig_last_status"] = status
         checkpoint(rows)
