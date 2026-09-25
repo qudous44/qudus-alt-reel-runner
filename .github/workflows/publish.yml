@@ -1,4 +1,4 @@
-name: Qudus Alt Reel Publisher
+name: Scheduled Reel Publisher
 
 on:
   schedule:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: qudus-alt-reel-publisher
+  group: scheduled-reel-publisher
   cancel-in-progress: false
 
 permissions:
@@ -17,24 +17,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Check out private worker
-        env:
-          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
-        run: |
-          git clone --depth 1 https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/qudous44/qudus-alt-reel-scheduler.git worker
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
           cache: 'pip'
-          cache-dependency-path: worker/requirements.txt
 
       - name: Install dependencies
-        run: python -m pip install --disable-pip-version-check -q -r worker/requirements.txt
+        run: python -m pip install --disable-pip-version-check -q -r requirements.txt
 
       - name: Publish one due reel
-        working-directory: worker
         env:
           CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
           CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
@@ -43,11 +36,11 @@ jobs:
           META_IG_USER_ID: ${{ secrets.META_IG_USER_ID }}
           META_FB_PAGE_ID: ${{ secrets.META_FB_PAGE_ID }}
           META_GRAPH_VERSION: ${{ secrets.META_GRAPH_VERSION }}
+          REELS_DAILY_LIMIT: ${{ secrets.REELS_DAILY_LIMIT }}
+          REELS_MIN_INTERVAL_MINUTES: ${{ secrets.REELS_MIN_INTERVAL_MINUTES }}
+          FB_PUBLISH_ENABLED: ${{ secrets.FB_PUBLISH_ENABLED }}
           CLOUD_BATCH_PUBLIC_ID: ${{ secrets.CLOUD_BATCH_PUBLIC_ID }}
           CLOUD_STATE_PUBLIC_ID: ${{ secrets.CLOUD_STATE_PUBLIC_ID }}
           CLOUD_STATE_ENABLED: '1'
-          REELS_DAILY_LIMIT: '100'
-          REELS_MIN_INTERVAL_MINUTES: '10'
-          FB_PUBLISH_ENABLED: '0'
           PYTHONUNBUFFERED: '1'
         run: python cron_entry.py

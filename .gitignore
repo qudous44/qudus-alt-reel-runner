@@ -1,0 +1,8 @@
+.env
+*.log
+*.lock
+*.tmp
+*.bak
+upload/
+__pycache__/
+*.pyc

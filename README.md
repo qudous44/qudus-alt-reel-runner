@@ -1,3 +1,3 @@
-# Scheduled worker runner
+# Scheduled Reel Worker
 
-Public runner only. Publishing code, state, and credentials remain outside this repository.
+Code-only cloud runner. Runtime credentials and publishing state are not stored in this repository.
