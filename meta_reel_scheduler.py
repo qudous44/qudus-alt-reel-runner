@@ -26,6 +26,7 @@ DEFAULT_FB_PAGE_ID = ""
 DEFAULT_GRAPH_VERSION = "v24.0"
 DEFAULT_DAILY_LIMIT = 12
 DEFAULT_MIN_INTERVAL_MINUTES = 90
+BLOCKED_SOURCES = {"sidmrrapper"}
 
 
 class SchedulerError(RuntimeError):
@@ -672,12 +673,16 @@ def pending_row(rows: list[dict]) -> dict | None:
     # be published to both Instagram and Facebook in the same run. Old IG-only
     # rows are Facebook-backfilled only after no new IG rows remain.
     for row in rows:
+        if row.get("source_username") in BLOCKED_SOURCES:
+            continue
         if row.get("scheduler_blocked"):
             continue
         if not row.get("published_ig_id"):
             return row
     if FB_PUBLISH_ENABLED:
         for row in rows:
+            if row.get("source_username") in BLOCKED_SOURCES:
+                continue
             if row.get("scheduler_blocked"):
                 continue
             if row.get("published_ig_id") and not row.get("published_fb_id"):
