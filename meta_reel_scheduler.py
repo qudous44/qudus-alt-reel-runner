@@ -455,6 +455,14 @@ def ensure_ig(row: dict, rows: list[dict]) -> bool:
         raise SchedulerError("missing cloudinary_video_url")
     video_url = transformed_video_url(source, facebook=False)
     row["meta_video_url"] = video_url
+    # A creation container that already ended in ERROR/EXPIRED/TIMEOUT is safe
+    # to replace because media_publish was never committed for that container.
+    # Keep post-publish ambiguity handling below fail-closed.
+    if row.get("ig_creation_id") and row.get("ig_last_status") in {"ERROR", "EXPIRED", "TIMEOUT"}:
+        row["ig_stale_creation_id"] = row.pop("ig_creation_id")
+        row["ig_stale_creation_status"] = row.pop("ig_last_status")
+        row["batch_status"] = "cloudinary_ready"
+        checkpoint(rows)
     if not row.get("ig_creation_id"):
         data = {
             "media_type": "REELS",
