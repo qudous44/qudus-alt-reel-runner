@@ -25,7 +25,7 @@ def main() -> None:
     )
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
-            if response.status != 204:
+            if response.status not in (200, 204):
                 raise RuntimeError(f"Unexpected dispatch status: {response.status}")
     except urllib.error.HTTPError as exc:
         raise RuntimeError(f"GitHub dispatch failed: HTTP {exc.code}") from None
