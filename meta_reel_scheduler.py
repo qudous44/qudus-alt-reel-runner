@@ -614,16 +614,20 @@ def seconds_until_due(state: dict) -> int:
 
 
 def pending_row(rows: list[dict]) -> dict | None:
-    # Paired mode: when Facebook publishing is enabled, finish both destinations
-    # for each queue item before advancing to the next item.
+    # New Instagram throughput is primary. A row that is new to Instagram will
+    # be published to both Instagram and Facebook in the same run. Old IG-only
+    # rows are Facebook-backfilled only after no new IG rows remain.
     for row in rows:
         if row.get("scheduler_blocked"):
             continue
-        if FB_PUBLISH_ENABLED:
-            if not row.get("published_ig_id") or not row.get("published_fb_id"):
-                return row
-        elif not row.get("published_ig_id"):
+        if not row.get("published_ig_id"):
             return row
+    if FB_PUBLISH_ENABLED:
+        for row in rows:
+            if row.get("scheduler_blocked"):
+                continue
+            if row.get("published_ig_id") and not row.get("published_fb_id"):
+                return row
     return None
 
 
