@@ -1,8 +1,9 @@
-name: Scheduled Reel Publisher
+﻿name: Scheduled Reel Publisher
 
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '3,8,13,18,23,28,33,38,43,48,53,58 * * * *'
+      timezone: 'Asia/Karachi'
   workflow_dispatch:
 
 concurrency:
@@ -44,3 +45,4 @@ jobs:
           CLOUD_STATE_ENABLED: '1'
           PYTHONUNBUFFERED: '1'
         run: python cron_entry.py
+
