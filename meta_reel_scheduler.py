@@ -16,6 +16,7 @@ import requests
 ROOT = Path(__file__).resolve().parent
 BATCH_PATH = ROOT / "upload" / "batches" / "batch_001_first100" / "batch_001.jsonl"
 STATE_PATH = ROOT / "upload" / "scheduler_state.json"
+VIDEO_MAP_PATH = ROOT / "upload" / "video_map.json"
 LOCK_PATH = ROOT / "upload" / "scheduler.lock"
 LOG_PATH = ROOT / "upload" / "scheduler.log"
 
@@ -80,6 +81,9 @@ CLOUD_BATCH_PUBLIC_ID = os.getenv(
 )
 CLOUD_STATE_PUBLIC_ID = os.getenv(
     "CLOUD_STATE_PUBLIC_ID", "qudus_alt/state/scheduler_state.json"
+)
+CLOUD_VIDEO_MAP_PUBLIC_ID = os.getenv(
+    "CLOUD_VIDEO_MAP_PUBLIC_ID", "qudus_alt/state/video_map.json"
 )
 
 
@@ -210,10 +214,31 @@ def cloud_sync_from_remote() -> None:
         return
     got_batch = cloud_download_file(BATCH_PATH, CLOUD_BATCH_PUBLIC_ID)
     got_state = cloud_download_file(STATE_PATH, CLOUD_STATE_PUBLIC_ID)
+    with contextlib.suppress(SchedulerError):
+        cloud_download_file(VIDEO_MAP_PATH, CLOUD_VIDEO_MAP_PUBLIC_ID)
     if not got_batch:
         cloud_upload_file(BATCH_PATH, CLOUD_BATCH_PUBLIC_ID)
     if not got_state and STATE_PATH.exists():
         cloud_upload_file(STATE_PATH, CLOUD_STATE_PUBLIC_ID)
+
+
+def apply_video_map(rows: list[dict]) -> int:
+    if not VIDEO_MAP_PATH.exists():
+        return 0
+    try:
+        mapping = json.loads(VIDEO_MAP_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return 0
+    changed = 0
+    for row in rows:
+        if row.get("cloudinary_video_url"):
+            continue
+        url = mapping.get(row.get("queue_id"))
+        if url:
+            row["cloudinary_video_url"] = url
+            row["batch_status"] = "cloudinary_ready"
+            changed += 1
+    return changed
 
 
 def load_rows() -> list[dict]:
@@ -624,6 +649,9 @@ def preflight(rows: list[dict]) -> dict:
 def run_once(*, live: bool) -> int:
     with single_instance():
         rows = load_rows()
+        mapped = apply_video_map(rows)
+        if mapped:
+            log(f"video map applied to {mapped} rows")
         state = load_state()
         reset_daily_state(state)
         info = preflight(rows)
