@@ -6,6 +6,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import random
 import shutil
 import sys
 import time
@@ -66,6 +67,11 @@ DAILY_LIMIT = int(os.getenv("REELS_DAILY_LIMIT", str(DEFAULT_DAILY_LIMIT)))
 MIN_INTERVAL_MINUTES = int(
     os.getenv("REELS_MIN_INTERVAL_MINUTES", str(DEFAULT_MIN_INTERVAL_MINUTES))
 )
+MAX_INTERVAL_MINUTES = int(
+    os.getenv("REELS_MAX_INTERVAL_MINUTES", str(MIN_INTERVAL_MINUTES + 3))
+)
+if MAX_INTERVAL_MINUTES < MIN_INTERVAL_MINUTES:
+    MAX_INTERVAL_MINUTES = MIN_INTERVAL_MINUTES
 FB_PUBLISH_ENABLED = os.getenv("FB_PUBLISH_ENABLED", "1").strip().lower() not in {
     "0", "false", "no", "off"
 }
@@ -643,6 +649,13 @@ def reset_daily_state(state: dict) -> None:
 
 
 def seconds_until_due(state: dict) -> int:
+    next_due = state.get("next_due_at")
+    if next_due:
+        try:
+            due = dt.datetime.fromisoformat(next_due)
+            return max(0, int((due - utcnow()).total_seconds()))
+        except ValueError:
+            pass
     last = state.get("last_action_at")
     if not last:
         return 0
@@ -686,6 +699,8 @@ def preflight(rows: list[dict]) -> dict:
         "pending_queue_id": row.get("queue_id") if row else None,
         "daily_limit": DAILY_LIMIT,
         "min_interval_minutes": MIN_INTERVAL_MINUTES,
+        "max_interval_minutes": MAX_INTERVAL_MINUTES,
+        "next_due_at": load_state().get("next_due_at"),
         "fb_publish_enabled": FB_PUBLISH_ENABLED,
     }
     return result
@@ -753,15 +768,24 @@ def run_once(*, live: bool) -> int:
             log(f"ERROR {exc}")
             return 2
         if changed:
+            acted_at = utcnow()
+            next_interval = random.SystemRandom().randint(
+                MIN_INTERVAL_MINUTES, MAX_INTERVAL_MINUTES
+            )
             state["jobs_today"] = int(state.get("jobs_today", 0)) + 1
-            state["last_action_at"] = iso_now()
+            state["last_action_at"] = acted_at.isoformat(timespec="seconds")
+            state["next_interval_minutes"] = next_interval
+            state["next_due_at"] = (
+                acted_at + dt.timedelta(minutes=next_interval)
+            ).isoformat(timespec="seconds")
             state["last_queue_id"] = row.get("queue_id")
             state["last_result"] = "published"
             state.pop("last_error", None)
             save_state(state)
             log(
                 f"published {row.get('queue_id')} "
-                f"IG={row.get('published_ig_id')} FB={row.get('published_fb_id')}"
+                f"IG={row.get('published_ig_id')} FB={row.get('published_fb_id')} "
+                f"next_interval={next_interval}m"
             )
         return 0
 
