@@ -543,19 +543,16 @@ def seconds_until_due(state: dict) -> int:
 
 
 def pending_row(rows: list[dict]) -> dict | None:
-    # Instagram throughput is the primary queue. A Facebook permission issue must
-    # never stall new Instagram publishes.
+    # Paired mode: when Facebook publishing is enabled, finish both destinations
+    # for each queue item before advancing to the next item.
     for row in rows:
         if row.get("scheduler_blocked"):
             continue
-        if not row.get("published_ig_id"):
-            return row
-    if FB_PUBLISH_ENABLED:
-        for row in rows:
-            if row.get("scheduler_blocked"):
-                continue
-            if not row.get("published_fb_id"):
+        if FB_PUBLISH_ENABLED:
+            if not row.get("published_ig_id") or not row.get("published_fb_id"):
                 return row
+        elif not row.get("published_ig_id"):
+            return row
     return None
 
 
@@ -607,7 +604,12 @@ def run_once(*, live: bool) -> int:
             return 0
         usage = info.get("quota_usage")
         total = info.get("quota_total")
-        if isinstance(usage, int) and isinstance(total, int) and usage >= total:
+        if (
+            not row.get("published_ig_id")
+            and isinstance(usage, int)
+            and isinstance(total, int)
+            and usage >= total
+        ):
             log(f"Meta Instagram rolling quota reached: {usage}/{total}")
             return 0
         changed = False
