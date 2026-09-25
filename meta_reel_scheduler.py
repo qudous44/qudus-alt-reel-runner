@@ -136,6 +136,52 @@ def cloud_upload_file(path: Path, public_id: str) -> None:
         )
 
 
+def ensure_cloudinary_video(row: dict, rows: list[dict]) -> None:
+    if row.get("cloudinary_video_url"):
+        return
+    source = row.get("source_video_url")
+    if not source:
+        raise SchedulerError(
+            f"{row.get('queue_id')} has no cloud video URL or remote source URL"
+        )
+    if not _cloud_ready():
+        raise SchedulerError("Cloudinary video ingest credentials are missing")
+
+    timestamp = str(int(time.time()))
+    public_id = f"qudus_alt/master/{row.get('queue_id')}"
+    signed = {
+        "invalidate": "true",
+        "overwrite": "true",
+        "public_id": public_id,
+        "timestamp": timestamp,
+    }
+    data = {
+        **signed,
+        "api_key": CLOUDINARY_API_KEY,
+        "signature": _cloud_signature(signed),
+        "file": source,
+    }
+    response = requests.post(
+        f"https://api.cloudinary.com/v1_1/{CLOUDINARY_CLOUD_NAME}/video/upload",
+        data=data,
+        timeout=180,
+    )
+    if not response.ok:
+        raise SchedulerError(
+            f"Cloudinary video ingest failed HTTP {response.status_code}: "
+            f"{response.text[:300]}"
+        )
+    payload = response.json()
+    secure_url = payload.get("secure_url")
+    if not secure_url:
+        raise SchedulerError("Cloudinary video ingest returned no secure_url")
+    row["cloudinary_video_url"] = secure_url
+    row["batch_status"] = "cloudinary_ready"
+    row["cloudinary_ingested_at"] = iso_now()
+    checkpoint(rows)
+    log(f"cloudinary ingested {row.get('queue_id')}")
+
+
 def cloud_download_file(path: Path, public_id: str) -> bool:
     if not _cloud_ready():
         if CLOUD_STATE_ENABLED:
@@ -614,6 +660,7 @@ def run_once(*, live: bool) -> int:
             return 0
         changed = False
         try:
+            ensure_cloudinary_video(row, rows)
             changed = ensure_ig(row, rows) or changed
             if FB_PUBLISH_ENABLED:
                 changed = ensure_fb(row, rows) or changed
