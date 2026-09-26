@@ -29,6 +29,7 @@ DEFAULT_MIN_INTERVAL_MINUTES = 90
 BLOCKED_SOURCES = {"sidmrrapper"}
 APPROVED_ORIGINALITY = {"original", "materially_transformed"}
 APPROVED_RIGHTS = {"owned", "licensed", "permission", "reuse_allowed"}
+APPROVED_SOURCE_KINDS = {"meme_page", "edit_page", "fan_edit_page", "media_page"}
 
 
 def policy_eligible(row: dict) -> bool:
@@ -36,7 +37,18 @@ def policy_eligible(row: dict) -> bool:
         row.get("publish_approved") is True
         and row.get("originality_status") in APPROVED_ORIGINALITY
         and row.get("rights_status") in APPROVED_RIGHTS
+        and row.get("source_kind") in APPROVED_SOURCE_KINDS
     )
+
+
+def publish_caption(row: dict) -> str:
+    caption = str(row.get("publish_caption") or row.get("caption_draft") or "")
+    if "@" in caption and row.get("allow_mentions") is not True:
+        raise SchedulerError(
+            f"{row.get('queue_id')} caption contains @ mentions; "
+            "set an approved no-mention publish_caption or allow_mentions=true"
+        )
+    return caption
 
 
 class SchedulerError(RuntimeError):
@@ -503,7 +515,7 @@ def ensure_ig(row: dict, rows: list[dict]) -> bool:
         data = {
             "media_type": "REELS",
             "video_url": video_url,
-            "caption": row.get("caption_draft") or "",
+            "caption": publish_caption(row),
             "share_to_feed": "true",
             "access_token": TOKEN,
         }
@@ -629,7 +641,7 @@ def ensure_fb(row: dict, rows: list[dict]) -> bool:
                 "upload_phase": "finish",
                 "video_id": row["fb_video_id"],
                 "video_state": "PUBLISHED",
-                "description": row.get("caption_draft") or "",
+                "description": publish_caption(row),
                 "access_token": token,
             },
         )
