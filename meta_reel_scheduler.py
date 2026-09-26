@@ -27,6 +27,16 @@ DEFAULT_GRAPH_VERSION = "v24.0"
 DEFAULT_DAILY_LIMIT = 12
 DEFAULT_MIN_INTERVAL_MINUTES = 90
 BLOCKED_SOURCES = {"sidmrrapper"}
+APPROVED_ORIGINALITY = {"original", "materially_transformed"}
+APPROVED_RIGHTS = {"owned", "licensed", "permission", "reuse_allowed"}
+
+
+def policy_eligible(row: dict) -> bool:
+    return (
+        row.get("publish_approved") is True
+        and row.get("originality_status") in APPROVED_ORIGINALITY
+        and row.get("rights_status") in APPROVED_RIGHTS
+    )
 
 
 class SchedulerError(RuntimeError):
@@ -669,13 +679,14 @@ def seconds_until_due(state: dict) -> int:
 
 
 def pending_row(rows: list[dict]) -> dict | None:
-    # New Instagram throughput is primary. A row that is new to Instagram will
-    # be published to both Instagram and Facebook in the same run. Old IG-only
-    # rows are Facebook-backfilled only after no new IG rows remain.
+    # Fail closed: raw/reposted material is never auto-published. A row must
+    # have explicit approval plus a documented originality and rights status.
     for row in rows:
         if row.get("source_username") in BLOCKED_SOURCES:
             continue
         if row.get("scheduler_blocked"):
+            continue
+        if not policy_eligible(row):
             continue
         if not row.get("published_ig_id"):
             return row
@@ -684,6 +695,8 @@ def pending_row(rows: list[dict]) -> dict | None:
             if row.get("source_username") in BLOCKED_SOURCES:
                 continue
             if row.get("scheduler_blocked"):
+                continue
+            if not policy_eligible(row):
                 continue
             if row.get("published_ig_id") and not row.get("published_fb_id"):
                 return row
@@ -707,6 +720,10 @@ def preflight(rows: list[dict]) -> dict:
         "max_interval_minutes": MAX_INTERVAL_MINUTES,
         "next_due_at": load_state().get("next_due_at"),
         "fb_publish_enabled": FB_PUBLISH_ENABLED,
+        "policy_blocked_rows": sum(
+            1 for item in rows
+            if not item.get("published_ig_id") and not policy_eligible(item)
+        ),
     }
     return result
 
