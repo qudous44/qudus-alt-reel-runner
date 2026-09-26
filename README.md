@@ -1,8 +1,5 @@
 # Scheduled Reel Worker
 
-Code-only cloud runner. Runtime credentials and publishing state are not stored in this repository.
+Windows Task Scheduler runs QudusAltCloudDispatchFallback every five minutes while the PC is on and user 123 is signed in. Its hidden VBScript launcher dispatches the GitHub workflow without a Command Prompt window.
 
-The GitHub workflow publishes one due item, waits for the next due time, then
-requests its own next run with the repository's GITHUB_TOKEN. An hourly GitHub
-schedule restarts the chain if a run fails. No PC task or paid cron service is
-required. The workflow's concurrency group keeps only one publisher active.
+The workflow publishes at most one due reel per run. Cloudinary persists state, and the GitHub concurrency group prevents overlapping publishers. The local QudusAltReels100Daily Python publisher remains disabled. Runtime credentials and publishing state are not stored here.
