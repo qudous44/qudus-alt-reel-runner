@@ -2,9 +2,14 @@
 
 on:
   schedule:
-    # UTC; offset from the top of the hour, where scheduled runs are often delayed.
-    - cron: '2/5 * * * *'
+    # Recovery trigger if the self-dispatched chain stops.
+    - cron: '23 * * * *'
   workflow_dispatch:
+    inputs:
+      chain_delay_seconds:
+        description: 'Optional one-run delay override for testing'
+        required: false
+        type: number
 
 concurrency:
   group: scheduled-reel-publisher
@@ -12,11 +17,12 @@ concurrency:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -45,4 +51,11 @@ jobs:
           CLOUD_STATE_ENABLED: '1'
           PYTHONUNBUFFERED: '1'
         run: python cron_entry.py
+
+      - name: Queue next cloud check
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHAIN_DELAY_SECONDS: ${{ inputs.chain_delay_seconds || '' }}
+        run: python chain_dispatch.py
 
